@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Mobile Accessories Shop",
+    "slug": "mobile-accessories-shop-management",
+    "version": "1.0.0",
+    "platforms": [
+      "android"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mobileaccessoriesshop",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.shubhamvishwakarma.mobileaccessoriesshop",
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Mobile Accessories Shop to scan product QR codes.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Mobile Accessories Shop to save QR labels.",
+          "savePhotosPermission": "Allow Mobile Accessories Shop to save QR labels.",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
