@@ -18,10 +18,10 @@ const schema = z.object({
   brand: z.string(),
   variantName: z.string().trim().min(2, 'Enter the model and colour'),
   sku: z.string().trim().min(2, 'Enter a unique SKU'),
-  purchasePrice: z.string().refine((value) => Number(value) >= 0, 'Enter a valid price'),
-  sellingPrice: z.string().refine((value) => Number(value) > 0, 'Enter a valid price'),
-  stockQuantity: z.string().refine((value) => Number.isInteger(Number(value)) && Number(value) >= 0, 'Enter a whole number'),
-  lowStockThreshold: z.string().refine((value) => Number.isInteger(Number(value)) && Number(value) >= 0, 'Enter a whole number'),
+  purchasePrice: z.string().refine((value) => value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0, 'Enter a valid price'),
+  sellingPrice: z.string().refine((value) => value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0, 'Enter a valid price'),
+  stockQuantity: z.string().refine((value) => value.trim() !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0, 'Enter a whole number'),
+  lowStockThreshold: z.string().refine((value) => value.trim() !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0, 'Enter a whole number'),
 });
 type FormValues = z.infer<typeof schema>;
 

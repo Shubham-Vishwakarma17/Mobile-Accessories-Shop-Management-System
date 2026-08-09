@@ -12,9 +12,9 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.shubhamvishwakarma.mobileaccessoriesshop",
+      "versionCode": 1,
       "permissions": [
-        "CAMERA",
-        "POST_NOTIFICATIONS"
+        "CAMERA"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -43,17 +43,7 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-notifications",
-      [
-        "expo-media-library",
-        {
-          "photosPermission": "Allow Mobile Accessories Shop to save QR labels.",
-          "savePhotosPermission": "Allow Mobile Accessories Shop to save QR labels.",
-          "granularPermissions": [
-            "photo"
-          ]
-        }
-      ]
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

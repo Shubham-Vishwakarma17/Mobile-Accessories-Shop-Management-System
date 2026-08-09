@@ -61,6 +61,8 @@ export default function DashboardScreen() {
         <View style={styles.actions}>
           <Action label="Check or add stock" detail="See every product and update quantities" onPress={() => router.push('/products')} />
           <Action label="Finish current sale" detail="Choose Cash, UPI, Card or Credit" onPress={() => router.push('/sale')} />
+          <Action label="Customer repairs" detail="Record a customer’s phone left for repair" onPress={() => router.push('/repairs')} />
+          <Action label="Backup and account" detail="Synchronize data or sign out safely" onPress={() => router.push('/more')} />
         </View>
       </ScrollView>
     </SafeAreaView>

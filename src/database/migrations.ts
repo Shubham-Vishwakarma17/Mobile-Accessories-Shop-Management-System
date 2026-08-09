@@ -4,6 +4,8 @@ export async function migrateDatabase(db: SQLiteDatabase) {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA synchronous = NORMAL;
 
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY NOT NULL,
@@ -78,38 +80,32 @@ export async function migrateDatabase(db: SQLiteDatabase) {
       synced_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS repair_jobs (
+      id TEXT PRIMARY KEY NOT NULL,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      alternate_phone TEXT,
+      device_name TEXT NOT NULL,
+      issue TEXT NOT NULL,
+      accessories_received TEXT,
+      condition_notes TEXT,
+      estimated_cost_paise INTEGER NOT NULL DEFAULT 0 CHECK(estimated_cost_paise >= 0),
+      advance_paise INTEGER NOT NULL DEFAULT 0 CHECK(advance_paise >= 0),
+      status TEXT NOT NULL DEFAULT 'RECEIVED' CHECK(status IN ('RECEIVED', 'IN_REPAIR', 'READY', 'DELIVERED')),
+      received_at TEXT NOT NULL,
+      promised_date TEXT,
+      notes TEXT,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      sync_status TEXT NOT NULL DEFAULT 'PENDING'
+    );
+
     CREATE INDEX IF NOT EXISTS variants_product_id_idx ON variants(product_id);
     CREATE INDEX IF NOT EXISTS sales_status_idx ON sales(status);
     CREATE INDEX IF NOT EXISTS movements_variant_id_idx ON inventory_movements(variant_id);
+    CREATE INDEX IF NOT EXISTS repair_jobs_status_idx ON repair_jobs(status, is_deleted);
+    CREATE INDEX IF NOT EXISTS repair_jobs_phone_idx ON repair_jobs(phone);
   `);
 
-  await seedDatabase(db);
-}
-
-async function seedDatabase(db: SQLiteDatabase) {
-  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM products');
-  if ((row?.count ?? 0) > 0) return;
-
-  const now = new Date().toISOString();
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT INTO products (id, name, category, brand, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      'demo-product-cover', 'iPhone 17 Cover', 'Phone Covers', 'Generic', now, now,
-    );
-    await db.runAsync(
-      `INSERT INTO variants
-       (id, product_id, variant_name, sku, qr_value, purchase_price_paise, selling_price_paise, stock_quantity, low_stock_threshold, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      'demo-variant-pro-black', 'demo-product-cover', 'Pro / Black', 'IP17-PRO-BLK',
-      'MASMS:VARIANT:demo-variant-pro-black', 25000, 49900, 8, 3, now, now,
-    );
-    await db.runAsync(
-      `INSERT INTO variants
-       (id, product_id, variant_name, sku, qr_value, purchase_price_paise, selling_price_paise, stock_quantity, low_stock_threshold, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      'demo-variant-max-blue', 'demo-product-cover', 'Pro Max / Blue', 'IP17-PM-BLU',
-      'MASMS:VARIANT:demo-variant-max-blue', 27500, 54900, 2, 3, now, now,
-    );
-  });
 }

@@ -43,7 +43,7 @@ export default function ScanScreen() {
     <View style={styles.page}>
       <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={locked ? undefined : scan} />
       <SafeAreaView style={styles.overlay}>
-        <View style={styles.topCopy}><Text style={styles.title}>Place the QR inside the frame</Text><Text style={styles.subtitle}>Each successful scan immediately removes one piece from stock.</Text></View>
+        <View style={styles.topCopy}><Text style={styles.title}>Place the QR inside the frame</Text><Text style={styles.subtitle}>Scanning finds the product. You choose the quantity before stock changes.</Text></View>
         <View style={styles.frame} />
         <View style={styles.bottom}>
           <View style={styles.tip}><Text style={styles.tipTitle}>One scan only</Text><Text style={styles.tipText}>After a QR is found, you will choose the quantity before any stock is changed.</Text></View>

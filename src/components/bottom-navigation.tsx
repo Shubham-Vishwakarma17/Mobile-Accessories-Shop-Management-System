@@ -4,12 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/theme/colors';
 
-const items: { label: string; icon: string; path: '/' | '/products' | '/scan' | '/sale' | '/notifications'; primary?: boolean }[] = [
+const items: { label: string; icon: string; path: '/' | '/products' | '/scan' | '/sale' | '/notifications' | '/repairs'; primary?: boolean }[] = [
   { label: 'Home', icon: '⌂', path: '/' },
   { label: 'Stock', icon: '▤', path: '/products' },
   { label: 'Scan', icon: '▣', path: '/scan', primary: true },
   { label: 'Sale', icon: '₹', path: '/sale' },
   { label: 'Alerts', icon: '!', path: '/notifications' },
+  { label: 'Repairs', icon: '⌕', path: '/repairs' },
 ];
 
 export function BottomNavigation() {
@@ -30,7 +31,7 @@ export function BottomNavigation() {
             <View style={[styles.iconWrap, item.primary && styles.primaryIcon, active && !item.primary && styles.activeIcon]}>
               <Text style={[styles.icon, item.primary && styles.primaryIconText, active && !item.primary && styles.activeText]}>{item.icon}</Text>
             </View>
-            <Text style={[styles.label, active && styles.activeText]}>{item.label}</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.8} style={[styles.label, active && styles.activeText]}>{item.label}</Text>
           </Pressable>
         );
       })}
@@ -39,13 +40,13 @@ export function BottomNavigation() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, paddingHorizontal: 6 },
-  item: { flex: 1, minHeight: 55, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  iconWrap: { minWidth: 36, height: 28, paddingHorizontal: 8, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  bar: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 7, paddingHorizontal: 3 },
+  item: { flex: 1, height: 58, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 2, gap: 3 },
+  iconWrap: { width: 38, height: 30, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   activeIcon: { backgroundColor: colors.primarySoft },
-  primaryIcon: { width: 48, height: 38, borderRadius: 16, backgroundColor: colors.primary, marginTop: -18, borderWidth: 3, borderColor: colors.surface },
-  icon: { color: colors.muted, fontSize: 20, lineHeight: 22, fontWeight: '900' },
-  primaryIconText: { color: colors.white, fontSize: 21 },
-  label: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  primaryIcon: { backgroundColor: colors.primary },
+  icon: { color: colors.muted, fontSize: 19, lineHeight: 21, fontWeight: '900', textAlign: 'center' },
+  primaryIconText: { color: colors.white },
+  label: { width: '100%', color: colors.muted, fontSize: 10, lineHeight: 13, fontWeight: '700', textAlign: 'center' },
   activeText: { color: colors.primary },
 });

@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AuthGate } from '@/components/auth-gate';
 import { BottomNavigation } from '@/components/bottom-navigation';
+import { LOCAL_DATABASE_NAME } from '@/constants/config';
 import { migrateDatabase } from '@/database/migrations';
 import { AuthProvider } from '@/providers/auth-provider';
 import { SyncProvider } from '@/providers/sync-provider';
@@ -12,7 +13,7 @@ import { colors } from '@/theme/colors';
 
 export default function RootLayout() {
   return (
-    <SQLiteProvider databaseName="accessories-shop.db" onInit={migrateDatabase}>
+    <SQLiteProvider databaseName={LOCAL_DATABASE_NAME} onInit={migrateDatabase}>
       <AuthProvider>
         <SyncProvider>
           <AuthGate>
@@ -30,11 +31,16 @@ export default function RootLayout() {
                 <Stack.Screen name="products/index" options={{ title: 'My stock' }} />
                 <Stack.Screen name="products/new" options={{ title: 'Add a new product' }} />
                 <Stack.Screen name="products/[id]" options={{ title: 'Add new stock' }} />
+                <Stack.Screen name="products/details/[id]" options={{ title: 'Product details' }} />
                 <Stack.Screen name="products/qr/[id]" options={{ title: 'QR label' }} />
+                <Stack.Screen name="products/bulk-qr" options={{ title: 'Download QR labels' }} />
                 <Stack.Screen name="scan" options={{ title: 'Scan and sell' }} />
                 <Stack.Screen name="sell/[id]" options={{ title: 'Choose quantity' }} />
                 <Stack.Screen name="sale" options={{ title: 'Current sale' }} />
                 <Stack.Screen name="notifications" options={{ title: 'Stock alerts' }} />
+                <Stack.Screen name="repairs/index" options={{ title: 'Customer repairs' }} />
+                <Stack.Screen name="repairs/new" options={{ title: 'Add customer repair' }} />
+                <Stack.Screen name="repairs/[id]" options={{ title: 'Repair details' }} />
                 <Stack.Screen name="more" options={{ title: 'More' }} />
               </Stack>
               <BottomNavigation />

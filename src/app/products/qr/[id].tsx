@@ -1,5 +1,6 @@
-import * as MediaLibrary from 'expo-media-library/legacy';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
@@ -25,14 +26,11 @@ export default function QrLabelScreen() {
     if (!variant || !labelRef.current) return;
     try {
       setSaving(true);
-      const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
-      if (!permission.granted) {
-        Alert.alert('Permission needed', 'Allow photo access so the QR label can be saved to your phone.');
-        return;
-      }
-      const uri = await captureRef(labelRef, { format: 'png', quality: 1, result: 'tmpfile' });
-      await MediaLibrary.saveToLibraryAsync(uri);
-      Alert.alert('QR label saved', 'The label image is now in your phone gallery. You can print or share it.');
+      if (!FileSystem.cacheDirectory || !(await Sharing.isAvailableAsync())) throw new Error('Sharing is unavailable on this phone.');
+      const base64 = await captureRef(labelRef, { format: 'png', quality: 1, result: 'base64' });
+      const uri = `${FileSystem.cacheDirectory}qr-label-${variant.sku}-${Date.now()}.png`;
+      await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Save or share QR label', UTI: 'public.png' });
     } catch (error) {
       Alert.alert('Could not save label', error instanceof Error ? error.message : 'Please try again.');
     } finally { setSaving(false); }
@@ -42,7 +40,7 @@ export default function QrLabelScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.heading}><Text style={textStyles.heading}>Small product label</Text><Text style={textStyles.muted}>Save this image, print it at a small size, and stick it on the correct product type.</Text></View>
+      <View style={styles.heading}><Text style={textStyles.heading}>Small product label</Text><Text style={textStyles.muted}>Save or share this image, print it small, and stick it on the correct product type.</Text></View>
       <View style={styles.previewArea}>
         <View ref={labelRef} collapsable={false} style={styles.label}>
           <View style={styles.brandRow}><View style={styles.brandDot} /><Text style={styles.brand}>MY SHOP</Text></View>
@@ -53,7 +51,7 @@ export default function QrLabelScreen() {
         </View>
       </View>
       <View style={styles.sizeHint}><Text style={styles.sizeIcon}>↙</Text><Text style={styles.sizeText}>The saved image includes only the white label above—not the rest of this screen.</Text></View>
-      <PrimaryButton label={saving ? 'Saving label…' : 'Save QR label to phone'} onPress={saveLabel} disabled={saving} />
+      <PrimaryButton label={saving ? 'Preparing label…' : 'Save or share QR label'} onPress={saveLabel} disabled={saving} />
     </Screen>
   );
 }

@@ -13,6 +13,8 @@ export type InventoryVariant = {
   id: string;
   productId: string;
   productName: string;
+  productCategory: string;
+  productBrand: string | null;
   variantName: string;
   sku: string;
   qrValue: string;
@@ -20,6 +22,14 @@ export type InventoryVariant = {
   sellingPricePaise: number;
   stockQuantity: number;
   lowStockThreshold: number;
+};
+
+export type PaginatedResult<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
 };
 
 export type SaleLine = {
@@ -36,4 +46,23 @@ export type DraftSale = {
   items: SaleLine[];
   totalPaise: number;
   itemCount: number;
+};
+
+export type RepairStatus = 'RECEIVED' | 'IN_REPAIR' | 'READY' | 'DELIVERED';
+
+export type RepairJob = {
+  id: string;
+  customerName: string;
+  phone: string;
+  alternatePhone: string | null;
+  deviceName: string;
+  issue: string;
+  accessoriesReceived: string | null;
+  conditionNotes: string | null;
+  estimatedCostPaise: number;
+  advancePaise: number;
+  status: RepairStatus;
+  receivedAt: string;
+  promisedDate: string | null;
+  notes: string | null;
 };

@@ -3,26 +3,29 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { PaginationControls } from '@/components/pagination-controls';
 import { Card, textStyles } from '@/components/ui';
-import { listVariants } from '@/database/repository';
+import { getVariantsPage } from '@/database/repository';
 import { colors } from '@/theme/colors';
-import type { InventoryVariant } from '@/types/domain';
+import type { InventoryVariant, PaginatedResult } from '@/types/domain';
 
 export default function NotificationsScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
-  const [items, setItems] = useState<InventoryVariant[]>([]);
-  const load = useCallback(() => { listVariants(db).then((all) => setItems(all.filter((item) => item.stockQuantity <= item.lowStockThreshold))); }, [db]);
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState<PaginatedResult<InventoryVariant>>({ items: [], page: 1, pageSize: 8, totalItems: 0, totalPages: 1 });
+  const load = useCallback(() => { getVariantsPage(db, { page, pageSize: 8, lowStockOnly: true }).then((next) => { setResult(next); if (next.page !== page) setPage(next.page); }); }, [db, page]);
   useFocusEffect(load);
 
   return (
     <FlatList
       style={styles.page}
       contentContainerStyle={styles.list}
-      data={items.sort((a, b) => a.stockQuantity - b.stockQuantity)}
+      data={result.items}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={<View style={styles.header}><Text style={textStyles.heading}>Products needing attention</Text><Text style={textStyles.muted}>These products have reached their low-stock limit. Add stock when a delivery arrives.</Text></View>}
       ListEmptyComponent={<Card style={styles.empty}><Text style={styles.allGood}>✓</Text><Text style={textStyles.heading}>Everything looks good</Text><Text style={textStyles.muted}>No product is running low right now.</Text></Card>}
+      ListFooterComponent={result.totalItems > 0 ? <PaginationControls page={result.page} totalPages={result.totalPages} totalItems={result.totalItems} onPageChange={setPage} /> : null}
       renderItem={({ item }) => (
         <Card style={styles.alertCard}>
           <View style={[styles.alertIcon, item.stockQuantity === 0 && styles.outIcon]}><Text style={styles.alertIconText}>{item.stockQuantity === 0 ? '0' : '!'}</Text></View>

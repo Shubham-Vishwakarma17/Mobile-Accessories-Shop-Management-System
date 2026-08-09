@@ -1,6 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { useSQLiteContext } from 'expo-sqlite';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
 import { useAuth } from '@/providers/auth-provider';
 import { synchronizeShop } from '@/services/sync';
@@ -20,14 +20,15 @@ export function SyncProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<SyncState['status']>('idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeSync = useRef<Promise<void> | null>(null);
 
-  const syncNow = useCallback(async () => {
+  const performSync = useCallback(async () => {
     if (!user) return;
     const network = await NetInfo.fetch();
-    if (!network.isConnected) {
+    if (!network.isConnected || network.isInternetReachable === false) {
       setStatus('offline');
       setError('No internet connection. Local changes are safe on this phone.');
-      return;
+      throw new Error('No internet connection. Local changes are safe on this phone.');
     }
     try {
       setStatus('syncing');
@@ -41,6 +42,13 @@ export function SyncProvider({ children }: PropsWithChildren) {
       throw syncError;
     }
   }, [db, user]);
+
+  const syncNow = useCallback(() => {
+    if (activeSync.current) return activeSync.current;
+    const task = performSync().finally(() => { activeSync.current = null; });
+    activeSync.current = task;
+    return task;
+  }, [performSync]);
 
   useEffect(() => {
     if (!user) return;

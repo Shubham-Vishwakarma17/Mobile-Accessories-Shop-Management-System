@@ -12,10 +12,14 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
+const firestoreDatabaseId = process.env.EXPO_PUBLIC_FIREBASE_DATABASE_ID?.trim();
+
 export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 export const firebaseApp = isFirebaseConfigured ? (getApps().length ? getApp() : initializeApp(firebaseConfig)) : null;
 export const firebaseAuth = firebaseApp ? createAuth() : null;
-export const firestore = firebaseApp ? getFirestore(firebaseApp) : null;
+export const firestore = firebaseApp
+  ? (firestoreDatabaseId ? getFirestore(firebaseApp, firestoreDatabaseId) : getFirestore(firebaseApp))
+  : null;
 
 function createAuth() {
   try {

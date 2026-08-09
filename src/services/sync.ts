@@ -40,21 +40,20 @@ export async function synchronizeShop(db: SQLiteDatabase, uid: string): Promise<
 async function uploadLocalSnapshot(db: SQLiteDatabase, uid: string) {
   const products = await db.getAllAsync<LocalRow>('SELECT * FROM products');
   const variants = await db.getAllAsync<LocalRow>('SELECT * FROM variants');
-  const sales = await db.getAllAsync<LocalRow>("SELECT * FROM sales WHERE status = 'COMPLETED'");
-  const saleItems = await db.getAllAsync<LocalRow>(`
-    SELECT si.* FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE s.status = 'COMPLETED'
-  `);
-  const movements = await db.getAllAsync<LocalRow>(`
-    SELECT im.* FROM inventory_movements im
-    LEFT JOIN sales s ON s.id = im.sale_id
-    WHERE im.sale_id IS NULL OR s.status = 'COMPLETED'
-  `);
+  // Upload every sale state and movement. In particular, a cancellation must
+  // overwrite the previously synced COMPLETED sale instead of being restored
+  // by the following cloud download.
+  const sales = await db.getAllAsync<LocalRow>('SELECT * FROM sales');
+  const saleItems = await db.getAllAsync<LocalRow>('SELECT * FROM sale_items');
+  const movements = await db.getAllAsync<LocalRow>('SELECT * FROM inventory_movements');
+  const repairJobs = await db.getAllAsync<LocalRow>('SELECT * FROM repair_jobs');
   const documents: { ref: DocumentReference; data: LocalRow }[] = [
     ...products.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'products', String(data.id)), data })),
     ...variants.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'variants', String(data.id)), data })),
     ...sales.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'sales', String(data.id)), data })),
     ...saleItems.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'saleItems', String(data.id)), data })),
     ...movements.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'inventoryMovements', String(data.id)), data })),
+    ...repairJobs.map((data) => ({ ref: doc(firestore!, 'shops', uid, 'repairJobs', String(data.id)), data })),
   ];
   for (let start = 0; start < documents.length; start += 400) {
     const batch = writeBatch(firestore!);
@@ -65,9 +64,9 @@ async function uploadLocalSnapshot(db: SQLiteDatabase, uid: string) {
 }
 
 async function downloadCloudSnapshot(db: SQLiteDatabase, uid: string) {
-  const names = ['products', 'variants', 'sales', 'saleItems', 'inventoryMovements'] as const;
+  const names = ['products', 'variants', 'sales', 'saleItems', 'inventoryMovements', 'repairJobs'] as const;
   const snapshots = await Promise.all(names.map((name) => getDocs(collection(firestore!, 'shops', uid, name))));
-  const [products, variants, sales, saleItems, movements] = snapshots.map((snapshot) => snapshot.docs.map((item) => item.data()));
+  const [products, variants, sales, saleItems, movements, repairJobs] = snapshots.map((snapshot) => snapshot.docs.map((item) => item.data()));
 
   await db.withTransactionAsync(async () => {
     for (const row of products) await upsertProduct(db, row);
@@ -75,8 +74,27 @@ async function downloadCloudSnapshot(db: SQLiteDatabase, uid: string) {
     for (const row of sales) await upsertSale(db, row);
     for (const row of saleItems) await upsertSaleItem(db, row);
     for (const row of movements) await upsertMovement(db, row);
+    for (const row of repairJobs) await upsertRepairJob(db, row);
   });
   return snapshots.reduce((total, snapshot) => total + snapshot.size, 0);
+}
+
+async function upsertRepairJob(db: SQLiteDatabase, row: DocumentData) {
+  await db.runAsync(`
+    INSERT INTO repair_jobs (id, customer_name, phone, alternate_phone, device_name, issue,
+      accessories_received, condition_notes, estimated_cost_paise, advance_paise, status,
+      received_at, promised_date, notes, is_deleted, created_at, updated_at, sync_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED')
+    ON CONFLICT(id) DO UPDATE SET customer_name=excluded.customer_name, phone=excluded.phone,
+      alternate_phone=excluded.alternate_phone, device_name=excluded.device_name, issue=excluded.issue,
+      accessories_received=excluded.accessories_received, condition_notes=excluded.condition_notes,
+      estimated_cost_paise=excluded.estimated_cost_paise, advance_paise=excluded.advance_paise,
+      status=excluded.status, promised_date=excluded.promised_date, notes=excluded.notes,
+      is_deleted=excluded.is_deleted, updated_at=excluded.updated_at, sync_status='SYNCED'
+  `, row.id, row.customer_name, row.phone, row.alternate_phone ?? null, row.device_name, row.issue,
+    row.accessories_received ?? null, row.condition_notes ?? null, row.estimated_cost_paise,
+    row.advance_paise, row.status, row.received_at, row.promised_date ?? null, row.notes ?? null,
+    row.is_deleted ?? 0, row.created_at, row.updated_at);
 }
 
 async function upsertProduct(db: SQLiteDatabase, row: DocumentData) {

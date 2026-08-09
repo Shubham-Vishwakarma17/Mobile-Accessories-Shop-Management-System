@@ -1,12 +1,13 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { DashboardSummary, DraftSale, InventoryVariant, PaymentMethod } from '@/types/domain';
+import type { DashboardSummary, DraftSale, InventoryVariant, PaginatedResult, PaymentMethod, RepairJob, RepairStatus } from '@/types/domain';
 
 const id = () => Crypto.randomUUID();
 
 export async function getDashboardSummary(db: SQLiteDatabase): Promise<DashboardSummary> {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [stock, sales, draft] = await Promise.all([
     db.getFirstAsync<{ total: number; low: number; out: number }>(`
       SELECT COUNT(*) AS total,
@@ -16,7 +17,7 @@ export async function getDashboardSummary(db: SQLiteDatabase): Promise<Dashboard
     `),
     db.getFirstAsync<{ count: number; revenue: number }>(
       `SELECT COUNT(*) AS count, COALESCE(SUM(total_paise), 0) AS revenue
-       FROM sales WHERE status = 'COMPLETED' AND substr(completed_at, 1, 10) = ?`, today,
+       FROM sales WHERE status = 'COMPLETED' AND date(completed_at, 'localtime') = ?`, today,
     ),
     db.getFirstAsync<{ count: number }>(`
       SELECT COALESCE(SUM(si.quantity), 0) AS count FROM sale_items si
@@ -35,7 +36,7 @@ export async function getDashboardSummary(db: SQLiteDatabase): Promise<Dashboard
 
 export async function listVariants(db: SQLiteDatabase): Promise<InventoryVariant[]> {
   return db.getAllAsync<InventoryVariant>(`
-    SELECT v.id, v.product_id AS productId, p.name AS productName,
+    SELECT v.id, v.product_id AS productId, p.name AS productName, p.category AS productCategory, p.brand AS productBrand,
       v.variant_name AS variantName, v.sku, v.qr_value AS qrValue,
       v.purchase_price_paise AS purchasePricePaise,
       v.selling_price_paise AS sellingPricePaise,
@@ -47,9 +48,48 @@ export async function listVariants(db: SQLiteDatabase): Promise<InventoryVariant
   `);
 }
 
+export async function getVariantsPage(db: SQLiteDatabase, options: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  lowStockOnly?: boolean;
+} = {}): Promise<PaginatedResult<InventoryVariant>> {
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, options.pageSize ?? 10));
+  const search = `%${options.search?.trim().toLowerCase() ?? ''}%`;
+  const lowStockClause = options.lowStockOnly ? 'AND v.stock_quantity <= v.low_stock_threshold' : '';
+  const orderBy = options.lowStockOnly
+    ? 'v.stock_quantity ASC, p.name COLLATE NOCASE, v.variant_name COLLATE NOCASE'
+    : 'p.name COLLATE NOCASE, v.variant_name COLLATE NOCASE';
+  const where = `
+    WHERE v.is_active = 1 AND p.is_active = 1
+      AND (LOWER(p.name) LIKE ? OR LOWER(v.variant_name) LIKE ? OR LOWER(v.sku) LIKE ?)
+      ${lowStockClause}
+  `;
+  const totalRow = await db.getFirstAsync<{ count: number }>(`
+    SELECT COUNT(*) AS count FROM variants v JOIN products p ON p.id = v.product_id ${where}
+  `, search, search, search);
+  const totalItems = totalRow?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const items = await db.getAllAsync<InventoryVariant>(`
+    SELECT v.id, v.product_id AS productId, p.name AS productName, p.category AS productCategory, p.brand AS productBrand,
+      v.variant_name AS variantName, v.sku, v.qr_value AS qrValue,
+      v.purchase_price_paise AS purchasePricePaise,
+      v.selling_price_paise AS sellingPricePaise,
+      v.stock_quantity AS stockQuantity,
+      v.low_stock_threshold AS lowStockThreshold
+    FROM variants v JOIN products p ON p.id = v.product_id
+    ${where}
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `, search, search, search, pageSize, (safePage - 1) * pageSize);
+  return { items, page: safePage, pageSize, totalItems, totalPages };
+}
+
 export async function getVariantById(db: SQLiteDatabase, variantId: string): Promise<InventoryVariant | null> {
   return db.getFirstAsync<InventoryVariant>(`
-    SELECT v.id, v.product_id AS productId, p.name AS productName,
+    SELECT v.id, v.product_id AS productId, p.name AS productName, p.category AS productCategory, p.brand AS productBrand,
       v.variant_name AS variantName, v.sku, v.qr_value AS qrValue,
       v.purchase_price_paise AS purchasePricePaise,
       v.selling_price_paise AS sellingPricePaise,
@@ -62,7 +102,7 @@ export async function getVariantById(db: SQLiteDatabase, variantId: string): Pro
 
 export async function findVariantByQr(db: SQLiteDatabase, qrValue: string) {
   return db.getFirstAsync<InventoryVariant>(`
-    SELECT v.id, v.product_id AS productId, p.name AS productName,
+    SELECT v.id, v.product_id AS productId, p.name AS productName, p.category AS productCategory, p.brand AS productBrand,
       v.variant_name AS variantName, v.sku, v.qr_value AS qrValue,
       v.purchase_price_paise AS purchasePricePaise,
       v.selling_price_paise AS sellingPricePaise,
@@ -168,11 +208,85 @@ export async function createProductWithVariant(db: SQLiteDatabase, input: NewVar
   return { productId, variantId, qrValue };
 }
 
+export async function deleteVariant(db: SQLiteDatabase, variantId: string) {
+  const variant = await getVariantById(db, variantId);
+  if (!variant) throw new Error('This product could not be found.');
+  const reserved = await db.getFirstAsync<{ count: number }>(`
+    SELECT COALESCE(SUM(si.quantity), 0) AS count FROM sale_items si
+    JOIN sales s ON s.id = si.sale_id WHERE s.status = 'DRAFT' AND si.variant_id = ?
+  `, variantId);
+  if ((reserved?.count ?? 0) > 0) throw new Error('This item is in the current sale. Cancel or complete that sale first.');
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("UPDATE variants SET is_active = 0, updated_at = ?, sync_status = 'PENDING' WHERE id = ?", now, variantId);
+    await queueSync(db, 'variant', variantId, 'DELETE', { softDelete: true });
+  });
+}
+
+type NewRepairInput = Omit<RepairJob, 'id' | 'status' | 'receivedAt'>;
+
+export async function createRepairJob(db: SQLiteDatabase, input: NewRepairInput) {
+  const repairId = id();
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`
+      INSERT INTO repair_jobs (id, customer_name, phone, alternate_phone, device_name, issue,
+        accessories_received, condition_notes, estimated_cost_paise, advance_paise, status,
+        received_at, promised_date, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?, ?, ?, ?)
+    `, repairId, input.customerName.trim(), input.phone.trim(), input.alternatePhone?.trim() || null,
+      input.deviceName.trim(), input.issue.trim(), input.accessoriesReceived?.trim() || null,
+      input.conditionNotes?.trim() || null, input.estimatedCostPaise, input.advancePaise, now,
+      input.promisedDate?.trim() || null, input.notes?.trim() || null, now, now);
+    await queueSync(db, 'repairJob', repairId, 'CREATE', input);
+  });
+  return repairId;
+}
+
+const repairSelect = `SELECT id, customer_name AS customerName, phone,
+  alternate_phone AS alternatePhone, device_name AS deviceName, issue,
+  accessories_received AS accessoriesReceived, condition_notes AS conditionNotes,
+  estimated_cost_paise AS estimatedCostPaise, advance_paise AS advancePaise,
+  status, received_at AS receivedAt, promised_date AS promisedDate, notes FROM repair_jobs`;
+
+export async function getRepairJobsPage(db: SQLiteDatabase, options: { page?: number; pageSize?: number; search?: string } = {}): Promise<PaginatedResult<RepairJob>> {
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, options.pageSize ?? 8));
+  const search = `%${options.search?.trim().toLowerCase() ?? ''}%`;
+  const where = `WHERE is_deleted = 0 AND (LOWER(customer_name) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(device_name) LIKE ? OR LOWER(issue) LIKE ?)`;
+  const count = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) AS count FROM repair_jobs ${where}`, search, search, search, search);
+  const totalItems = count?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const items = await db.getAllAsync<RepairJob>(`${repairSelect} ${where} ORDER BY CASE status WHEN 'READY' THEN 0 WHEN 'RECEIVED' THEN 1 WHEN 'IN_REPAIR' THEN 2 ELSE 3 END, received_at DESC LIMIT ? OFFSET ?`, search, search, search, search, pageSize, (safePage - 1) * pageSize);
+  return { items, page: safePage, pageSize, totalItems, totalPages };
+}
+
+export async function getRepairJobById(db: SQLiteDatabase, repairId: string) {
+  return db.getFirstAsync<RepairJob>(`${repairSelect} WHERE id = ? AND is_deleted = 0`, repairId);
+}
+
+export async function updateRepairStatus(db: SQLiteDatabase, repairId: string, status: RepairStatus) {
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("UPDATE repair_jobs SET status = ?, updated_at = ?, sync_status = 'PENDING' WHERE id = ? AND is_deleted = 0", status, now, repairId);
+    await queueSync(db, 'repairJob', repairId, 'UPDATE_STATUS', { status });
+  });
+}
+
+export async function deleteRepairJob(db: SQLiteDatabase, repairId: string) {
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("UPDATE repair_jobs SET is_deleted = 1, updated_at = ?, sync_status = 'PENDING' WHERE id = ?", now, repairId);
+    await queueSync(db, 'repairJob', repairId, 'DELETE', { softDelete: true });
+  });
+}
+
 export async function addScannedVariant(db: SQLiteDatabase, qrValue: string) {
   let message = '';
   await db.withTransactionAsync(async () => {
     const variant = await db.getFirstAsync<InventoryVariant>(`
-      SELECT v.id, v.product_id AS productId, p.name AS productName,
+      SELECT v.id, v.product_id AS productId, p.name AS productName, p.category AS productCategory, p.brand AS productBrand,
         v.variant_name AS variantName, v.sku, v.qr_value AS qrValue,
         v.purchase_price_paise AS purchasePricePaise,
         v.selling_price_paise AS sellingPricePaise,
@@ -245,6 +359,32 @@ export async function completeDraftSale(db: SQLiteDatabase, paymentMethod: Payme
       paymentMethod, draft.totalPaise, cost?.total ?? 0, new Date().toISOString(), draft.id,
     );
     await queueSync(db, 'sale', draft.id, 'CREATE', { paymentMethod, totalPaise: draft.totalPaise });
+  });
+}
+
+export async function cancelDraftSale(db: SQLiteDatabase) {
+  const draft = await db.getFirstAsync<{ id: string }>("SELECT id FROM sales WHERE status = 'DRAFT' LIMIT 1");
+  if (!draft) return;
+  const items = await db.getAllAsync<{ variantId: string; quantity: number; stockQuantity: number }>(`
+    SELECT si.variant_id AS variantId, si.quantity, v.stock_quantity AS stockQuantity
+    FROM sale_items si JOIN variants v ON v.id = si.variant_id WHERE si.sale_id = ?
+  `, draft.id);
+  const now = new Date().toISOString();
+  await db.withTransactionAsync(async () => {
+    for (const item of items) {
+      await db.runAsync(
+        "UPDATE variants SET stock_quantity = stock_quantity + ?, updated_at = ?, sync_status = 'PENDING' WHERE id = ?",
+        item.quantity, now, item.variantId,
+      );
+      await db.runAsync(
+        `INSERT INTO inventory_movements
+         (id, variant_id, type, quantity_change, stock_before, stock_after, sale_id, reason, created_at)
+         VALUES (?, ?, 'SALE_CANCELLED', ?, ?, ?, ?, 'Sale cancelled before payment', ?)`,
+        id(), item.variantId, item.quantity, item.stockQuantity, item.stockQuantity + item.quantity, draft.id, now,
+      );
+    }
+    await db.runAsync("UPDATE sales SET status = 'CANCELLED', sync_status = 'PENDING' WHERE id = ?", draft.id);
+    await queueSync(db, 'sale', draft.id, 'CANCEL', { restoredItems: items.length });
   });
 }
 
