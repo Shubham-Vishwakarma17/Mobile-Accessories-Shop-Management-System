@@ -46,3 +46,4 @@ example
 
 # local build and visual QA artifacts
 /tmp/
+/output/
