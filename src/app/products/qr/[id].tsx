@@ -1,0 +1,73 @@
+import * as FileSystem from 'expo-file-system/legacy';
+import { useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
+import { captureRef } from 'react-native-view-shot';
+
+import { Screen } from '@/components/screen';
+import { PrimaryButton, textStyles } from '@/components/ui';
+import { getVariantById } from '@/database/repository';
+import { colors } from '@/theme/colors';
+import type { InventoryVariant } from '@/types/domain';
+
+export default function QrLabelScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const db = useSQLiteContext();
+  const labelRef = useRef<View>(null);
+  const [variant, setVariant] = useState<InventoryVariant | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (id) getVariantById(db, id).then(setVariant); }, [db, id]);
+
+  const saveLabel = async () => {
+    if (!variant || !labelRef.current) return;
+    try {
+      setSaving(true);
+      if (!FileSystem.cacheDirectory || !(await Sharing.isAvailableAsync())) throw new Error('Sharing is unavailable on this phone.');
+      const base64 = await captureRef(labelRef, { format: 'png', quality: 1, result: 'base64' });
+      const uri = `${FileSystem.cacheDirectory}qr-label-${variant.sku}-${Date.now()}.png`;
+      await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Save or share QR label', UTI: 'public.png' });
+    } catch (error) {
+      Alert.alert('Could not save label', error instanceof Error ? error.message : 'Please try again.');
+    } finally { setSaving(false); }
+  };
+
+  if (!variant) return <Screen><Text style={textStyles.muted}>Preparing QR label…</Text></Screen>;
+
+  return (
+    <Screen style={styles.screen}>
+      <View style={styles.heading}><Text style={textStyles.heading}>Small product label</Text><Text style={textStyles.muted}>Save or share this image, print it small, and stick it on the correct product type.</Text></View>
+      <View style={styles.previewArea}>
+        <View ref={labelRef} collapsable={false} style={styles.label}>
+          <View style={styles.brandRow}><View style={styles.brandDot} /><Text style={styles.brand}>MY SHOP</Text></View>
+          <QRCode value={variant.qrValue} size={152} color="#111C15" backgroundColor="#FFFFFF" quietZone={4} />
+          <Text numberOfLines={2} style={styles.product}>{variant.productName}</Text>
+          <Text numberOfLines={2} style={styles.variant}>{variant.variantName}</Text>
+          <Text style={styles.sku}>{variant.sku}</Text>
+        </View>
+      </View>
+      <View style={styles.sizeHint}><Text style={styles.sizeIcon}>↙</Text><Text style={styles.sizeText}>The saved image includes only the white label above—not the rest of this screen.</Text></View>
+      <PrimaryButton label={saving ? 'Preparing label…' : 'Save or share QR label'} onPress={saveLabel} disabled={saving} />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { alignItems: 'stretch' },
+  heading: { gap: 5 },
+  previewArea: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8ECE8', borderRadius: 24, paddingVertical: 28 },
+  label: { width: 220, minHeight: 270, backgroundColor: '#FFFFFF', borderRadius: 6, padding: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D7DDD8' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 7 },
+  brandDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary },
+  brand: { color: colors.primary, fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  product: { color: '#111C15', fontSize: 13, lineHeight: 16, fontWeight: '900', textAlign: 'center', marginTop: 8 },
+  variant: { color: '#4E5A52', fontSize: 11, lineHeight: 14, fontWeight: '700', textAlign: 'center', marginTop: 2 },
+  sku: { color: '#778078', fontSize: 8, fontWeight: '700', marginTop: 5 },
+  sizeHint: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.primarySoft, borderRadius: 16, padding: 14 },
+  sizeIcon: { color: colors.primary, fontSize: 22, fontWeight: '900' },
+  sizeText: { flex: 1, color: colors.primary, fontSize: 13, lineHeight: 18, fontWeight: '700' },
+});

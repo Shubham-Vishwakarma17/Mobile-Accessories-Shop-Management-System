@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsShop(shopId) {
+      return signedIn() && request.auth.uid == shopId;
+    }
+
+    match /shops/{shopId} {
+      allow read, write: if ownsShop(shopId);
+
+      match /{document=**} {
+        allow read, write: if ownsShop(shopId);
+      }
+    }
+  }
+}
